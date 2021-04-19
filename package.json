@@ -1,0 +1,10 @@
+{
+	"name": "jasm",
+	"version": "0.0.1-alpha",
+	"devDependencies": {
+		"typescript": "^4.2.2"
+	},
+	"scripts": {
+		"tsc": "tsc -w"
+	}
+}
