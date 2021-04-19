@@ -1,5 +1,5 @@
 import { isJasmType, JasmType } from "./JasmType.js";
-import { isJasmStruct, JasmCompiledStruct, JasmObject, JasmStruct } from "./JasmStruct.js";
+import { isJasmStruct, JasmCompiledStruct, JasmStruct } from "./JasmStruct.js";
 
 export class Jasm {
     private dataview!: DataView;

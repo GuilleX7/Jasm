@@ -137,3 +137,6 @@ pnpm-lock.yaml
 
 # Sonnarqube / sonnarscanner
 .scannerwork/
+
+# Build folder
+build/
