@@ -26,7 +26,7 @@ export class Jasm {
         setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setInt8(pointer + i, values[i]) } },
         alignment: 1,
         size: 1
-    };
+    }
 
     public [JasmType.uint8_t] = {
         getSingle: (pointer: number): number => this.dataview.getUint8(pointer),
@@ -35,7 +35,7 @@ export class Jasm {
         setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setUint8(pointer + i, values[i]) } },
         alignment: 1,
         size: 1
-    };
+    }
 
     public [JasmType.int16_t] = {
         getSingle: (pointer: number): number => this.dataview.getInt16(pointer, true),
@@ -44,7 +44,7 @@ export class Jasm {
         setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setInt16(pointer + i * this.int16_t.alignment, values[i], true) } },
         alignment: 2,
         size: 2
-    };
+    }
 
     public [JasmType.uint16_t] = {
         getSingle: (pointer: number): number => this.dataview.getUint16(pointer, true),
@@ -53,7 +53,7 @@ export class Jasm {
         setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setUint16(pointer + i * this.uint16_t.alignment, values[i], true) } },
         alignment: 2,
         size: 2
-    };
+    }
 
     public [JasmType.int32_t] = {
         getSingle: (pointer: number): number => this.dataview.getInt32(pointer, true),
@@ -62,7 +62,7 @@ export class Jasm {
         setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setInt32(pointer + i * this.int32_t.alignment, values[i], true) } },
         alignment: 4,
         size: 4
-    };
+    }
 
     public [JasmType.uint32_t] = {
         getSingle: (pointer: number): number => this.dataview.getUint32(pointer, true),
@@ -71,7 +71,7 @@ export class Jasm {
         setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setUint32(pointer + i * this.uint32_t.alignment, values[i], true) } },
         alignment: 4,
         size: 4
-    };
+    }
 
     public [JasmType.int64_t] = {
         getSingle: (pointer: number): bigint => this.dataview.getBigInt64(pointer, true),
@@ -80,7 +80,7 @@ export class Jasm {
         setArray: (pointer: number, values: bigint[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setBigInt64(pointer + i * this.int64_t.alignment, values[i], true) } },
         alignment: 8,
         size: 8
-    };
+    }
 
     public [JasmType.uint64_t] = {
         getSingle: (pointer: number): bigint => this.dataview.getBigUint64(pointer, true),
@@ -89,7 +89,7 @@ export class Jasm {
         setArray: (pointer: number, values: bigint[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setBigUint64(pointer + i * this.uint64_t.alignment, values[i], true) } },
         alignment: 8,
         size: 8
-    };
+    }
 
     /* Floating types */
     public [JasmType.float] = {
@@ -99,7 +99,7 @@ export class Jasm {
         setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setFloat32(pointer + i * this.float.alignment, values[i], true) } },
         alignment: 4,
         size: 4
-    };
+    }
 
     public [JasmType.double] = {
         getSingle: (pointer: number): number => this.dataview.getFloat64(pointer, true),
@@ -108,7 +108,7 @@ export class Jasm {
         setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setFloat64(pointer + i * this.double.alignment, values[i], true) } },
         alignment: 8,
         size: 8
-    };
+    }
 
     /* Basic types */
     public [JasmType.bool] = {
@@ -118,7 +118,7 @@ export class Jasm {
         setArray: (pointer: number, values: boolean[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setUint8(pointer + i, values[i] ? 1 : 0) } },
         alignment: 1,
         size: 1
-    };
+    }
 
     public [JasmType.char] = this.int8_t;
     public [JasmType.schar] = this.int8_t;
@@ -146,50 +146,39 @@ export class Jasm {
         let structOffset = 0;
 
         for (let i = 0; i < struct.members.length; i++) {
-            let member = struct.members[i];
+            const member = struct.members[i];
             if (member.name.length < 1) {
                 continue;
             }
 
-            let compiledMemberType = undefined;
-            let compiledMemberAlignment = 0;
-            let compiledMemberUnitSize = 0;
-
-            /* Structs are a special case: its alignment must be computed */
-            if (isJasmType(member.type)) {
-                compiledMemberType = member.type;
-                compiledMemberAlignment = this[member.type].alignment;
-                compiledMemberUnitSize = this[member.type].size;
-            } else {
-                compiledMemberType = (isJasmStruct(member.type)) ? this.compileStruct(member.type) : member.type;
-                compiledMemberAlignment = compiledMemberType.alignment;
-                compiledMemberUnitSize = compiledMemberType.size;
-            }
+            const typeData = this.calculateTypeData(member.type);
 
             /* Add necessary padding to calculate member offset
                NOTE: as unions offset is always 0, this won't ever execute */
-            let deltaOffset = structOffset % compiledMemberAlignment;
+            const deltaOffset = structOffset % typeData.alignment;
             if (structOffset !== 0 && deltaOffset !== 0) {
-                structOffset += compiledMemberAlignment - deltaOffset;
+                structOffset += typeData.alignment - deltaOffset;
             }
 
-            /* Set member offset and calculate length */
-            let compiledMemberOffset = structOffset;
-            let compiledMemberLength = (member.length && member.length > 0) ? member.length : 1;
+            const compiledMemberOffset = structOffset;
+            const compiledMemberLength = (member.length && member.length > 0) ? member.length : 1;
+            const compiledMemberSize = typeData.unitSize * compiledMemberLength;
 
-            /* Calculate element size, set new structure size and save most restrictive alignment */
-            let compiledMemberSize = compiledMemberUnitSize * compiledMemberLength;
+            /* Set new structure size and save most restrictive alignment */
             if (!struct.isUnion) {
                 structOffset += compiledMemberSize;
                 compiledStruct.size = structOffset;
-            } else {
-                compiledStruct.size = (compiledStruct.size > compiledMemberSize) ? compiledStruct.size : compiledMemberSize;
+            } else if (compiledStruct.size < compiledMemberSize) {
+                compiledStruct.size = compiledMemberSize;
             }
-            compiledStruct.alignment = (compiledStruct.alignment > compiledMemberAlignment) ? compiledStruct.alignment : compiledMemberAlignment;
+
+            if (compiledStruct.alignment < typeData.alignment) {
+                compiledStruct.alignment = typeData.alignment;
+            }
 
             compiledStruct.members[i] = {
                 name: member.name,
-                type: compiledMemberType,
+                type: typeData.resolvedType,
                 length: compiledMemberLength,
                 offset: compiledMemberOffset,
                 absoluteOffset: 0
@@ -197,25 +186,45 @@ export class Jasm {
         }
 
         /* Calculate structure padding at end */
-        let deltaOffset = compiledStruct.size % compiledStruct.alignment;
-        if (compiledStruct.size !== 0 && deltaOffset !== 0) {
-            compiledStruct.size += compiledStruct.alignment - deltaOffset;
+        const structDeltaOffset = compiledStruct.size % compiledStruct.alignment;
+        if (compiledStruct.size !== 0 && structDeltaOffset !== 0) {
+            compiledStruct.size += compiledStruct.alignment - structDeltaOffset;
         }
 
         this.calculateAbsoluteOffsets(compiledStruct, 0);
         return compiledStruct;
     }
 
+    private calculateTypeData(type: JasmType | JasmStruct | JasmCompiledStruct) {
+        let alignment = 0;
+        let unitSize = 0;
+        let resolvedType;
+
+        /* Structs are a special case: its alignment must be computed */
+        if (isJasmType(type)) {
+            resolvedType = type;
+            alignment = this[type].alignment;
+            unitSize = this[type].size;
+        } else {
+            resolvedType = (isJasmStruct(type)) ? this.compileStruct(type) : type;
+            alignment = resolvedType.alignment;
+            unitSize = resolvedType.size;
+        }
+
+        return {
+            alignment, unitSize, resolvedType
+        }
+    }
+
     private calculateAbsoluteOffsets(compiledStruct: JasmCompiledStruct, structOffset: number): void {
-        for (let i = 0; i < compiledStruct.members.length; i++) {
-            let compiledMember = compiledStruct.members[i];
+        for (const compiledMember of compiledStruct.members) {
             compiledMember.absoluteOffset = compiledMember.offset + structOffset;
             if (!isJasmType(compiledMember.type)) {
-                this.calculateAbsoluteOffsets(compiledMember.type, structOffset + compiledMember.offset);
+                this.calculateAbsoluteOffsets(compiledMember.type, compiledMember.absoluteOffset);
             }
         }
     }
-    
+
     /* String types */
     public getAsciiString(pointer: number): string {
         let _str = "";
@@ -223,7 +232,7 @@ export class Jasm {
             _str += String.fromCharCode(ch);
         }
         return _str;
-    };
+    }
 
     public setAsciiString(pointer: number, str: string) {
         let i;
@@ -231,17 +240,17 @@ export class Jasm {
             this.dataview.setUint8(pointer + i, str.charCodeAt(i));
         }
         this.dataview.setUint8(pointer + i, 0);
-    };
+    }
 
     public encodeUtf8String(str: string): Uint8Array {
         return this.textEncoder.encode(str);
-    };
+    }
 
     public getUtf8String(pointer: number): string {
         let strEnd;
         for (strEnd = pointer; this.view8u[strEnd]; strEnd++);
         return this.textDecoder.decode(this.view8u.slice(pointer, strEnd));
-    };
+    }
 
     public setUtf8String(pointer: number, str: string | Uint8Array) {
         let i;
@@ -252,5 +261,5 @@ export class Jasm {
             this.dataview.setUint8(pointer + i, str[i]);
         }
         this.dataview.setUint8(pointer + i, 0);
-    };
+    }
 }
