@@ -1,6 +1,6 @@
 import { isJasmType, JasmType } from "./JasmType.js";
 import { isJasmStruct, JasmCompiledStruct, JasmStruct } from "./JasmStruct.js";
-import { JasmObject } from "./JasmObject.js";
+import { JasmObject, valueSymbol } from "./JasmObject.js";
 
 export class Jasm {
     private dataview!: DataView;
@@ -228,9 +228,8 @@ export class Jasm {
 
     /* Objects */
     public instantiate(type: JasmType | JasmCompiledStruct, basePointer: number, length: number = 1): JasmObject {
-        let object: {
-            [key: string]: any,
-        } = {};
+        /* Note: object must be a valid JasmObject at the end of the function */
+        let object: any = {};
 
         if (isJasmType(type)) {
             this.instantiateType(object, type, basePointer, length);
@@ -241,43 +240,69 @@ export class Jasm {
         return object as JasmObject;
     }
 
-    private instantiateStruct(object: any, type: JasmCompiledStruct, basePointer: number, length: number) {
-
-    }
-
-    private instantiateSingleStructValue(object: any, type: JasmCompiledStruct, basePointer: number, length: number) {
-        /*
-        for (const compiledMember of type.members) {
-            object[compiledMember.name] = {};
-            if (isJasmType(compiledMember.type)) {
-                this.instantiateType(object[compiledMember.name], compiledMember.type, basePointer + compiledMember.absoluteOffset, compiledMember.length);
-            } else {
-                this.instantiateStruct(object[compiledMember.name], compiledMember.type, basePointer + compiledMember.absoluteOffset, compiledMember.length);
-            }
-        }
-        */
-    }
-
     private instantiateType(object: any, type: JasmType, basePointer: number, length: number) {
         if (length === 1) {
             this.instantiateSingleTypeValue(object, type, basePointer);
         } else {
-            this.instantiateArrayTypeValue(object, type, basePointer, length);
             for (let i = 0; i < length; i++) {
                 object[i] = {};
                 this.instantiateSingleTypeValue(object[i], type, basePointer, i);
             }
+            this.instantiateArrayTypeValue(object, type, basePointer, length);
         }
+    }
+
+    private instantiateStruct(object: any, type: JasmCompiledStruct, basePointer: number, length: number) {
+        if (length === 1) {
+            this.instantiateSingleStructValue(object, type, basePointer);
+        } else {
+            for (let i = 0; i < length; i++) {
+                object[i] = {};
+                this.instantiateSingleStructValue(object[i], type, basePointer, i);
+            }
+            this.instantiateArrayStructValue(object, type, basePointer, length);
+        }
+    }
+
+    private instantiateSingleStructValue(object: any, type: JasmCompiledStruct, basePointer: number, offset: number = 0) {
+        let structBasePointer = basePointer + offset * type.size;
+
+        for (const compiledMember of type.members) {
+            object[compiledMember.name] = {};
+            if (isJasmType(compiledMember.type)) {
+                this.instantiateType(object[compiledMember.name], compiledMember.type, structBasePointer + compiledMember.absoluteOffset, compiledMember.length);
+            } else {
+                this.instantiateStruct(object[compiledMember.name], compiledMember.type, structBasePointer + compiledMember.absoluteOffset, compiledMember.length);
+            }
+        }
+
+        Object.defineProperty(object, valueSymbol, {
+            get: () => {
+                return Object.fromEntries(
+                    Object.keys(object).map(key => [key, object[key][valueSymbol]])
+                );
+            },
+            set: (value: any) => {
+                Object.keys(value).forEach(key => object[key][valueSymbol] = value[key])
+            }
+        });
+    }
+
+    private instantiateArrayStructValue(object: any, type: JasmCompiledStruct, basePointer: number, length: number) {
+        Object.defineProperty(object, valueSymbol, {
+            get: () => Object.keys(object).map(key => object[key][valueSymbol]),
+            set: (value) => Object.keys(object).forEach(key => object[key][valueSymbol] = value[key])
+        });
     }
 
     private instantiateSingleTypeValue(object: any, type: JasmType, basePointer: number, offset: number = 0) {
         if (!offset) {
-            Object.defineProperty(object, "value", {
+            Object.defineProperty(object, valueSymbol, {
                 get: () => this[type].getSingle(basePointer),
                 set: (value: any) => this[type].setSingle(basePointer, value)
             });
         } else {
-            Object.defineProperty(object, "value", {
+            Object.defineProperty(object, valueSymbol, {
                 get: () => this[type].getSingle(basePointer, offset),
                 set: (value: any) => this[type].setSingle(basePointer, value, offset)
             });
@@ -285,13 +310,13 @@ export class Jasm {
     }
 
     private instantiateArrayTypeValue(object: any, type: JasmType, basePointer: number, length: number) {
-        Object.defineProperty(object, "value", {
+        Object.defineProperty(object, valueSymbol, {
             get: () => this[type].getArray(basePointer, length),
             set: (value: any) => this[type].setArray(basePointer, value)
         });
     }
 
-    /* String */
+    /* String utilities */
     public getAsciiString(pointer: number): string {
         let _str = "";
         for (let i = pointer, ch; ch = this.dataview.getUint8(i); i++) {
