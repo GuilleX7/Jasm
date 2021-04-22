@@ -1,6 +1,6 @@
 import { isJasmType, JasmType } from "./JasmType.js";
 import { isJasmStruct, JasmCompiledStruct, JasmStruct } from "./JasmStruct.js";
-import { JasmObject, valueSymbol } from "./JasmObject.js";
+import { JasmObject, addressSymbol, valueSymbol, alignmentSymbol, sizeSymbol } from "./JasmObject.js";
 
 export class Jasm {
     private dataview!: DataView;
@@ -276,22 +276,26 @@ export class Jasm {
             }
         }
 
-        Object.defineProperty(object, valueSymbol, {
-            get: () => {
-                return Object.fromEntries(
-                    Object.keys(object).map(key => [key, object[key][valueSymbol]])
-                );
+        Object.defineProperties(object, {
+            [valueSymbol]: {
+                get: () => { return Object.fromEntries(Object.keys(object).map(key => [key, object[key][valueSymbol]])); },
+                set: (value: any) => { Object.keys(value).forEach(key => object[key][valueSymbol] = value[key]) }
             },
-            set: (value: any) => {
-                Object.keys(value).forEach(key => object[key][valueSymbol] = value[key])
-            }
+            [addressSymbol]: { get: () => structBasePointer },
+            [sizeSymbol]: { get: () => type.size },
+            [alignmentSymbol]: { get: () => type.alignment }
         });
     }
 
     private instantiateArrayStructValue(object: any, type: JasmCompiledStruct, basePointer: number, length: number) {
-        Object.defineProperty(object, valueSymbol, {
-            get: () => Object.keys(object).map(key => object[key][valueSymbol]),
-            set: (value) => Object.keys(object).forEach(key => object[key][valueSymbol] = value[key])
+        Object.defineProperties(object, {
+            [valueSymbol]: {
+                get: () => Object.keys(object).map(key => object[key][valueSymbol]),
+                set: (value) => Object.keys(object).forEach(key => object[key][valueSymbol] = value[key])
+            },
+            [addressSymbol]: { get: () => basePointer },
+            [sizeSymbol]: { get: () => type.size },
+            [alignmentSymbol]: { get: () => type.alignment }
         });
     }
 
@@ -307,12 +311,23 @@ export class Jasm {
                 set: (value: any) => this[type].setSingle(basePointer, value, offset)
             });
         }
+
+        Object.defineProperties(object, {
+            [addressSymbol]: { get: () => basePointer + offset * this[type].alignment },
+            [sizeSymbol]: { get: () => this[type].size },
+            [alignmentSymbol]: { get: () => this[type].alignment }
+        });
     }
 
     private instantiateArrayTypeValue(object: any, type: JasmType, basePointer: number, length: number) {
-        Object.defineProperty(object, valueSymbol, {
-            get: () => this[type].getArray(basePointer, length),
-            set: (value: any) => this[type].setArray(basePointer, value)
+        Object.defineProperties(object, {
+            [valueSymbol]: {
+                get: () => this[type].getArray(basePointer, length),
+                set: (value: any) => this[type].setArray(basePointer, value)
+            },
+            [addressSymbol]: { get: () => basePointer },
+            [sizeSymbol]: { get: () => this[type].size },
+            [alignmentSymbol]: { get: () => this[type].alignment }
         });
     }
 
