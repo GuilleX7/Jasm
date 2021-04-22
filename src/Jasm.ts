@@ -294,7 +294,7 @@ export class Jasm {
                 set: (value) => Object.keys(object).forEach(key => object[key][valueSymbol] = value[key])
             },
             [addressSymbol]: { get: () => basePointer },
-            [sizeSymbol]: { get: () => type.size },
+            [sizeSymbol]: { get: () => type.size * length },
             [alignmentSymbol]: { get: () => type.alignment }
         });
     }
@@ -326,18 +326,18 @@ export class Jasm {
                 set: (value: any) => this[type].setArray(basePointer, value)
             },
             [addressSymbol]: { get: () => basePointer },
-            [sizeSymbol]: { get: () => this[type].size },
+            [sizeSymbol]: { get: () => this[type].size * length },
             [alignmentSymbol]: { get: () => this[type].alignment }
         });
     }
 
     /* String utilities */
     public getAsciiString(pointer: number): string {
-        let _str = "";
+        let str = "";
         for (let i = pointer, ch; ch = this.dataview.getUint8(i); i++) {
-            _str += String.fromCharCode(ch);
+            str += String.fromCharCode(ch);
         }
-        return _str;
+        return str;
     }
 
     public setAsciiString(pointer: number, str: string) {
@@ -367,5 +367,11 @@ export class Jasm {
             this.dataview.setUint8(pointer + i, str[i]);
         }
         this.dataview.setUint8(pointer + i, 0);
+    }
+
+    public getStringLength(pointer: number): number {
+        let stringEnd;
+        for (stringEnd = pointer; this.view8u[stringEnd]; stringEnd++);
+        return stringEnd - pointer;
     }
 }
