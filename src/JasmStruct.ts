@@ -26,4 +26,4 @@ export interface JasmCompiledStruct {
     isUnion: boolean
 }
 
-export const isJasmStruct = (x: any): x is JasmStruct => x && !("alignment" in x && "size" in x);
+export const isJasmStruct = (x: any): x is JasmStruct => x && "members" in x && !("alignment" in x && "size" in x);
