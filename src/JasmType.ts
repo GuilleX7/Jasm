@@ -29,4 +29,4 @@ export enum JasmType {
     size_t = "size_t",
 }
 
-export const isJasmType = (x: any): x is JasmType => Object.values(JasmType).includes(x);
+export const isJasmType = (x: any): x is JasmType => x && Object.values(JasmType).includes(x);
