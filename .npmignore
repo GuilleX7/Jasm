@@ -1,0 +1,10 @@
+node_modules
+src
+.editorconfig
+.eslintrc.json
+.gitignore
+.npmignore
+.npmrc
+.prettierrc
+package-lock.json
+tsconfig.json

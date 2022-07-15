@@ -1,377 +1,381 @@
-import { isJasmType, JasmType } from "./JasmType.js";
-import { isJasmStruct, JasmCompiledStruct, JasmStruct } from "./JasmStruct.js";
-import { JasmObject, addressSymbol, valueSymbol, alignmentSymbol, sizeSymbol } from "./JasmObject.js";
+import { jasmTypeData } from './typeData';
+import {
+  IJasm,
+  isJasmBaseObject,
+  isJasmType,
+  JasmType,
+  TJasmBaseObject,
+  TJasmStruct,
+  TJasmObject,
+  TJasmObjectConstructor,
+  TJasmStructDefinition,
+  TJasmTypeData,
+  TJasmObjectDeclaration,
+  isJasmObjectConstructor,
+  TJasmObjectProxy,
+  $value,
+  $address,
+  $baseAddress,
+  $type,
+  $ref,
+  $offset,
+  $cloneAt,
+  IJasmTypeMethods,
+} from './types';
 
-export class Jasm {
-    private dataview!: DataView;
-    private view8u!: Uint8Array;
-    private textDecoder!: TextDecoder;
-    private textEncoder!: TextEncoder;
+export class Jasm implements IJasm {
+  public static textDecoder = new TextDecoder();
+  public static textEncoder = new TextEncoder();
+  private dataview!: DataView;
 
-    constructor(memory: WebAssembly.Memory) {
-        this.setMemory(memory);
-        this.textDecoder = new TextDecoder();
-        this.textEncoder = new TextEncoder();
+  constructor(private memory: WebAssembly.Memory) {
+    this.attachToMemory();
+  }
+
+  private attachToMemory() {
+    this.dataview = new DataView(this.memory.buffer);
+  }
+  
+  private isDettachedFromMemory() {
+    return !this.dataview.buffer.byteLength
+  }
+
+  private reattachToMemory() {
+    if (this.isDettachedFromMemory()) {
+      this.attachToMemory()
     }
+  }
 
-    public setMemory(memory: WebAssembly.Memory) {
-        this.dataview = new DataView(memory.buffer);
-        this.view8u = new Uint8Array(memory.buffer);
-    }
+  /* Structs */
+  public static struct(struct: TJasmStructDefinition): TJasmStruct {
+    const compiledStruct: TJasmStruct = {
+      members: [],
+      alignment: 0,
+      size: 0,
+      isUnion: struct.isUnion || false,
+    };
+    let structOffset = 0;
 
-    /* Fixed integer types */
-    public [JasmType.int8_t] = {
-        getSingle: (pointer: number, offset: number = 0): number => this.dataview.getInt8(pointer + offset),
-        setSingle: (pointer: number, value: number, offset: number = 0): void => { this.dataview.setInt8(pointer + offset, value) },
-        getArray: (pointer: number, length: number): number[] => { const _array = []; for (let i = 0; i < length; i++) { _array[i] = this.dataview.getInt8(pointer + i) } return _array; },
-        setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setInt8(pointer + i, values[i]) } },
-        alignment: 1,
-        size: 1
-    }
+    for (let i = 0; i < struct.members.length; i++) {
+      const member = struct.members[i];
+      if (member.name.length < 1) {
+        continue;
+      }
 
-    public [JasmType.uint8_t] = {
-        getSingle: (pointer: number, offset: number = 0): number => this.dataview.getUint8(pointer + offset),
-        setSingle: (pointer: number, value: number, offset: number = 0): void => { this.dataview.setUint8(pointer + offset, value) },
-        getArray: (pointer: number, length: number): number[] => { const _array = []; for (let i = 0; i < length; i++) { _array[i] = this.dataview.getUint8(pointer + i) } return _array; },
-        setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setUint8(pointer + i, values[i]) } },
-        alignment: 1,
-        size: 1
-    }
+      const typeData = Jasm.getTypeData(member.type);
 
-    public [JasmType.int16_t] = {
-        getSingle: (pointer: number, offset: number = 0): number => this.dataview.getInt16(pointer + offset * this.int16_t.alignment, true),
-        setSingle: (pointer: number, value: number, offset: number = 0): void => { this.dataview.setInt16(pointer + offset * this.int16_t.alignment, value, true) },
-        getArray: (pointer: number, length: number): number[] => { const _array = []; for (let i = 0; i < length; i++) { _array[i] = this.dataview.getInt16(pointer + i * this.int16_t.alignment, true) } return _array; },
-        setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setInt16(pointer + i * this.int16_t.alignment, values[i], true) } },
-        alignment: 2,
-        size: 2
-    }
-
-    public [JasmType.uint16_t] = {
-        getSingle: (pointer: number, offset: number = 0): number => this.dataview.getUint16(pointer + offset * this.uint16_t.alignment, true),
-        setSingle: (pointer: number, value: number, offset: number = 0): void => { this.dataview.setUint16(pointer + offset * this.uint16_t.alignment, value, true) },
-        getArray: (pointer: number, length: number): number[] => { const _array = []; for (let i = 0; i < length; i++) { _array[i] = this.dataview.getUint16(pointer + i * this.uint16_t.alignment, true) } return _array; },
-        setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setUint16(pointer + i * this.uint16_t.alignment, values[i], true) } },
-        alignment: 2,
-        size: 2
-    }
-
-    public [JasmType.int32_t] = {
-        getSingle: (pointer: number, offset: number = 0): number => this.dataview.getInt32(pointer + offset * this.int32_t.alignment, true),
-        setSingle: (pointer: number, value: number, offset: number = 0): void => { this.dataview.setInt32(pointer + offset * this.int32_t.alignment, value, true) },
-        getArray: (pointer: number, length: number): number[] => { const _array = []; for (let i = 0; i < length; i++) { _array[i] = this.dataview.getInt32(pointer + i * this.int32_t.alignment, true) } return _array; },
-        setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setInt32(pointer + i * this.int32_t.alignment, values[i], true) } },
-        alignment: 4,
-        size: 4
-    }
-
-    public [JasmType.uint32_t] = {
-        getSingle: (pointer: number, offset: number = 0): number => this.dataview.getUint32(pointer + offset * this.uint32_t.alignment, true),
-        setSingle: (pointer: number, value: number, offset: number = 0): void => { this.dataview.setUint32(pointer + offset * this.uint32_t.alignment, value, true) },
-        getArray: (pointer: number, length: number): number[] => { const _array = []; for (let i = 0; i < length; i++) { _array[i] = this.dataview.getUint32(pointer + i * this.uint32_t.alignment, true) } return _array; },
-        setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setUint32(pointer + i * this.uint32_t.alignment, values[i], true) } },
-        alignment: 4,
-        size: 4
-    }
-
-    public [JasmType.int64_t] = {
-        getSingle: (pointer: number, offset: number = 0): bigint => this.dataview.getBigInt64(pointer + offset * this.int64_t.alignment, true),
-        setSingle: (pointer: number, value: bigint | number, offset: number = 0): void => { this.dataview.setBigInt64(pointer + offset * this.int64_t.alignment, value as bigint, true) },
-        getArray: (pointer: number, length: number): bigint[] => { const _array = []; for (let i = 0; i < length; i++) { _array[i] = this.dataview.getBigInt64(pointer + i * this.int64_t.alignment, true) } return _array; },
-        setArray: (pointer: number, values: any[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setBigInt64(pointer + i * this.int64_t.alignment, values[i], true) } },
-        alignment: 8,
-        size: 8
-    }
-
-    public [JasmType.uint64_t] = {
-        getSingle: (pointer: number, offset: number = 0): bigint => this.dataview.getBigUint64(pointer + offset * this.uint64_t.alignment, true),
-        setSingle: (pointer: number, value: bigint | number, offset: number = 0): void => { this.dataview.setBigUint64(pointer + offset * this.uint64_t.alignment, value as bigint, true) },
-        getArray: (pointer: number, length: number): bigint[] => { const _array = []; for (let i = 0; i < length; i++) { _array[i] = this.dataview.getBigUint64(pointer + i * this.uint64_t.alignment, true) } return _array; },
-        setArray: (pointer: number, values: any[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setBigUint64(pointer + i * this.uint64_t.alignment, values[i], true) } },
-        alignment: 8,
-        size: 8
-    }
-
-    /* Floating types */
-    public [JasmType.float] = {
-        getSingle: (pointer: number, offset: number = 0): number => this.dataview.getFloat32(pointer + offset * this.float.alignment, true),
-        setSingle: (pointer: number, value: number, offset: number = 0): void => { this.dataview.setFloat32(pointer + offset * this.float.alignment, value, true) },
-        getArray: (pointer: number, length: number): number[] => { const _array = []; for (let i = 0; i < length; i++) { _array[i] = this.dataview.getFloat32(pointer + i * this.float.alignment, true) } return _array; },
-        setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setFloat32(pointer + i * this.float.alignment, values[i], true) } },
-        alignment: 4,
-        size: 4
-    }
-
-    public [JasmType.double] = {
-        getSingle: (pointer: number, offset: number = 0): number => this.dataview.getFloat64(pointer + offset * this.double.alignment, true),
-        setSingle: (pointer: number, value: number, offset: number = 0): void => { this.dataview.setFloat64(pointer + offset * this.double.alignment, value, true) },
-        getArray: (pointer: number, length: number): number[] => { const _array = []; for (let i = 0; i < length; i++) { _array[i] = this.dataview.getFloat64(pointer + i * this.double.alignment, true) } return _array; },
-        setArray: (pointer: number, values: number[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setFloat64(pointer + i * this.double.alignment, values[i], true) } },
-        alignment: 8,
-        size: 8
-    }
-
-    /* Basic types */
-    public [JasmType.bool] = {
-        getSingle: (pointer: number, offset: number = 0): boolean => !!this.dataview.getUint8(pointer + offset),
-        setSingle: (pointer: number, value: number | boolean, offset: number = 0): void => { this.dataview.setUint8(pointer + offset, value ? 1 : 0) },
-        getArray: (pointer: number, length: number): boolean[] => { const _array = []; for (let i = 0; i < length; i++) { _array[i] = !!this.dataview.getUint8(pointer + i) } return _array; },
-        setArray: (pointer: number, values: number[] | boolean[]): void => { for (let i = 0; i < values.length; i++) { this.dataview.setUint8(pointer + i, values[i] ? 1 : 0) } },
-        alignment: 1,
-        size: 1
-    }
-
-    public [JasmType.char] = this.int8_t;
-    public [JasmType.schar] = this.int8_t;
-    public [JasmType.uchar] = this.uint8_t;
-    public [JasmType.short] = this.int16_t;
-    public [JasmType.ushort] = this.uint16_t;
-    public [JasmType.int] = this.int32_t;
-    public [JasmType.uint] = this.uint32_t;
-    public [JasmType.enum] = this.int32_t;
-    public [JasmType.long] = this.int32_t;
-    public [JasmType.ulong] = this.uint32_t;
-    public [JasmType.llong] = this.int64_t;
-    public [JasmType.ullong] = this.uint64_t;
-    public [JasmType.pointer] = this.uint32_t;
-    public [JasmType.size_t] = this.uint32_t;
-
-    /* Structs */
-    public compileStruct(struct: JasmStruct): JasmCompiledStruct {
-        let compiledStruct: JasmCompiledStruct = {
-            members: [],
-            alignment: 0,
-            size: 0,
-            isUnion: struct.isUnion || false
-        };
-        let structOffset = 0;
-
-        for (let i = 0; i < struct.members.length; i++) {
-            const member = struct.members[i];
-            if (member.name.length < 1) {
-                continue;
-            }
-
-            const typeData = this.calculateTypeData(member.type);
-
-            /* Add necessary padding to calculate member offset
+      /* Add necessary padding to calculate member offset
                NOTE: as unions offset is always 0, this won't ever execute */
-            const deltaOffset = structOffset % typeData.alignment;
-            if (structOffset !== 0 && deltaOffset !== 0) {
-                structOffset += typeData.alignment - deltaOffset;
-            }
+      const deltaOffset = structOffset % typeData.alignment;
+      if (deltaOffset !== 0) {
+        structOffset += typeData.alignment - deltaOffset;
+      }
 
-            const compiledMemberOffset = structOffset;
-            const compiledMemberLength = (member.length && member.length > 0) ? member.length : 1;
-            const compiledMemberSize = typeData.unitSize * compiledMemberLength;
+      const compiledMemberOffset = structOffset;
+      const compiledMemberLength =
+        member.length && member.length > 0 ? member.length : 1;
+      const compiledMemberSize = typeData.size * compiledMemberLength;
 
-            /* Set new structure size and save most restrictive alignment */
-            if (!struct.isUnion) {
-                structOffset += compiledMemberSize;
-                compiledStruct.size = structOffset;
-            } else if (compiledStruct.size < compiledMemberSize) {
-                compiledStruct.size = compiledMemberSize;
-            }
+      /* Set new structure size and save most restrictive alignment */
+      if (!struct.isUnion) {
+        structOffset += compiledMemberSize;
+        compiledStruct.size = structOffset;
+      } else if (compiledStruct.size < compiledMemberSize) {
+        compiledStruct.size = compiledMemberSize;
+      }
 
-            if (compiledStruct.alignment < typeData.alignment) {
-                compiledStruct.alignment = typeData.alignment;
-            }
+      if (compiledStruct.alignment < typeData.alignment) {
+        compiledStruct.alignment = typeData.alignment;
+      }
 
-            compiledStruct.members[i] = {
-                name: member.name,
-                type: typeData.resolvedType,
-                length: compiledMemberLength,
-                offset: compiledMemberOffset,
-                absoluteOffset: 0
-            };
-        }
-
-        /* Calculate structure padding at end */
-        const structDeltaOffset = compiledStruct.size % compiledStruct.alignment;
-        if (compiledStruct.size !== 0 && structDeltaOffset !== 0) {
-            compiledStruct.size += compiledStruct.alignment - structDeltaOffset;
-        }
-
-        this.calculateAbsoluteOffsets(compiledStruct, 0);
-        return compiledStruct;
+      compiledStruct.members[i] = {
+        name: member.name,
+        type: member.type,
+        length: compiledMemberLength,
+        offset: compiledMemberOffset,
+        pointsTo: member.pointsTo ?? null,
+      };
     }
 
-    private calculateTypeData(type: JasmType | JasmStruct | JasmCompiledStruct) {
-        let alignment = 0;
-        let unitSize = 0;
-        let resolvedType;
-
-        /* Structs are a special case: its alignment must be computed */
-        if (isJasmType(type)) {
-            resolvedType = type;
-            alignment = this[type].alignment;
-            unitSize = this[type].size;
-        } else {
-            resolvedType = (isJasmStruct(type)) ? this.compileStruct(type) : type;
-            alignment = resolvedType.alignment;
-            unitSize = resolvedType.size;
-        }
-
-        return {
-            alignment, unitSize, resolvedType
-        }
+    /* Calculate structure padding at end */
+    const structDeltaOffset = compiledStruct.size % compiledStruct.alignment;
+    if (compiledStruct.size !== 0 && structDeltaOffset !== 0) {
+      compiledStruct.size += compiledStruct.alignment - structDeltaOffset;
     }
 
-    private calculateAbsoluteOffsets(compiledStruct: JasmCompiledStruct, structOffset: number): void {
-        for (const compiledMember of compiledStruct.members) {
-            compiledMember.absoluteOffset = compiledMember.offset + structOffset;
-            if (!isJasmType(compiledMember.type)) {
-                this.calculateAbsoluteOffsets(compiledMember.type, compiledMember.absoluteOffset);
+    return compiledStruct;
+  }
+
+  public static getTypeData(type: JasmType | TJasmStruct): TJasmTypeData {
+    return isJasmType(type) ? jasmTypeData[type] : type;
+  }
+
+  /* Objects */
+  public create({ type, length = 1, pointsTo = null }: TJasmObjectDeclaration) {
+    const baseObject = {
+      [$baseAddress]: 0,
+      [$offset]: (offset: number) =>
+        this._createProxy(baseObject, baseObject[$baseAddress] + offset)(),
+      [$cloneAt]: (address: number) => this._createProxy(baseObject, address),
+    } as TJasmBaseObject;
+
+    return this._create(baseObject, { type, length, pointsTo }, baseObject, 0);
+  }
+
+  private _createProxy(
+    rootObject: TJasmBaseObject,
+    address: number
+  ): TJasmObjectProxy {
+    return () => {
+      rootObject[$baseAddress] = address;
+      return rootObject;
+    };
+  }
+
+  private _create(
+    object: TJasmObject | TJasmBaseObject,
+    { type, length, pointsTo }: Required<TJasmObjectDeclaration>,
+    rootObject: TJasmBaseObject,
+    rootAddressOffset: number
+  ): TJasmObjectConstructor {
+    /* Other symbols */
+    const typeData = Jasm.getTypeData(type);
+    Object.defineProperties(object, {
+      [$address]: {
+        get: isJasmBaseObject(object)
+          ? () => object[$baseAddress]
+          : () => rootObject[$address] + rootAddressOffset,
+      },
+      [$type]: {
+        get: () => typeData,
+      },
+    });
+
+    /* Define valueSymbol */
+    const isArray = length > 1;
+    if (isJasmType(type)) {
+      Object.defineProperties(object, {
+        [$value]: {
+          ...(!isArray
+            ? {
+                get: () => this[type].getSingle(object[$address]),
+                set: (value: any) =>
+                  (this[type].setSingle as any)(object[$address], value),
+              }
+            : {
+                get: () => this[type].getArray(object[$address], length),
+                set: (values: any) =>
+                  this[type].setArray(object[$address], values),
+              }),
+        },
+      });
+    } else {
+      Object.defineProperties(object, {
+        ...(!isArray
+          ? {
+              [$value]: {
+                get: () =>
+                  type.members.reduce(
+                    (acc, member) => ({
+                      ...acc,
+                      [member.name]: object[member.name][$value],
+                    }),
+                    {}
+                  ),
+                set: (values: Record<string, any>) =>
+                  Object.entries(values).forEach(
+                    ([key, value]) => (object[key][$value] = value)
+                  ),
+              },
             }
-        }
-    }
+          : {
+              [$value]: {
+                get: () =>
+                  [...Array(length).keys()].map((i) => object[i][$value]),
+                set: (values: Record<string, any>[]) =>
+                  [...Array(length).keys()].forEach(
+                    (i) => (object[i][$value] = values[i] as any)
+                  ),
+              },
+            }),
+      });
 
-    /* Objects */
-    public instantiate(type: JasmType | JasmCompiledStruct, basePointer: number, length: number = 1): JasmObject {
-        /* Note: object must be a valid JasmObject at the end of the function */
-        let object: any = {};
-
-        if (isJasmType(type)) {
-            this.instantiateType(object, type, basePointer, length);
-        } else {
-            this.instantiateStruct(object, type, basePointer, length);
-        }
-
-        return object as JasmObject;
-    }
-
-    private instantiateType(object: any, type: JasmType, basePointer: number, length: number) {
-        if (length === 1) {
-            this.instantiateSingleTypeValue(object, type, basePointer);
-        } else {
-            for (let i = 0; i < length; i++) {
-                object[i] = {};
-                this.instantiateSingleTypeValue(object[i], type, basePointer, i);
-            }
-            this.instantiateArrayTypeValue(object, type, basePointer, length);
-        }
-    }
-
-    private instantiateStruct(object: any, type: JasmCompiledStruct, basePointer: number, length: number) {
-        if (length === 1) {
-            this.instantiateSingleStructValue(object, type, basePointer);
-        } else {
-            for (let i = 0; i < length; i++) {
-                object[i] = {};
-                this.instantiateSingleStructValue(object[i], type, basePointer, i);
-            }
-            this.instantiateArrayStructValue(object, type, basePointer, length);
-        }
-    }
-
-    private instantiateSingleStructValue(object: any, type: JasmCompiledStruct, basePointer: number, offset: number = 0) {
-        let structBasePointer = basePointer + offset * type.size;
-
-        for (const compiledMember of type.members) {
-            object[compiledMember.name] = {};
-            if (isJasmType(compiledMember.type)) {
-                this.instantiateType(object[compiledMember.name], compiledMember.type, structBasePointer + compiledMember.absoluteOffset, compiledMember.length);
-            } else {
-                this.instantiateStruct(object[compiledMember.name], compiledMember.type, structBasePointer + compiledMember.absoluteOffset, compiledMember.length);
-            }
-        }
-
-        Object.defineProperties(object, {
-            [valueSymbol]: {
-                get: () => { return Object.fromEntries(Object.keys(object).map(key => [key, object[key][valueSymbol]])); },
-                set: (value: any) => { Object.keys(value).forEach(key => object[key][valueSymbol] = value[key]) }
-            },
-            [addressSymbol]: { get: () => structBasePointer },
-            [sizeSymbol]: { get: () => type.size },
-            [alignmentSymbol]: { get: () => type.alignment }
+      if (!isArray) {
+        type.members.forEach((member) => {
+          object[member.name] = {} as TJasmObject;
+          this._create(
+            object[member.name],
+            member,
+            rootObject,
+            rootAddressOffset + member.offset
+          );
         });
+      }
     }
 
-    private instantiateArrayStructValue(object: any, type: JasmCompiledStruct, basePointer: number, length: number) {
-        Object.defineProperties(object, {
-            [valueSymbol]: {
-                get: () => Object.keys(object).map(key => object[key][valueSymbol]),
-                set: (value) => Object.keys(object).forEach(key => object[key][valueSymbol] = value[key])
-            },
-            [addressSymbol]: { get: () => basePointer },
-            [sizeSymbol]: { get: () => type.size * length },
-            [alignmentSymbol]: { get: () => type.alignment }
-        });
+    /* Define children if array */
+    if (isArray) {
+      [...Array(length).keys()].forEach((i) => {
+        object[i] = {} as TJasmObject;
+        this._create(
+          object[i],
+          { type, length: 1, pointsTo },
+          rootObject,
+          rootAddressOffset + typeData.alignment * i
+        );
+      });
     }
 
-    private instantiateSingleTypeValue(object: any, type: JasmType, basePointer: number, offset: number = 0) {
-        if (!offset) {
-            Object.defineProperty(object, valueSymbol, {
-                get: () => this[type].getSingle(basePointer),
-                set: (value: any) => this[type].setSingle(basePointer, value)
-            });
-        } else {
-            Object.defineProperty(object, valueSymbol, {
-                get: () => this[type].getSingle(basePointer, offset),
-                set: (value: any) => this[type].setSingle(basePointer, value, offset)
-            });
+    /* Define dereference operator */
+    if (!isArray && type === JasmType.pointer && pointsTo) {
+      const dereferencedObjectConstructor = isJasmObjectConstructor(pointsTo)
+        ? pointsTo
+        : this.create(pointsTo);
+      Object.defineProperty(object, $ref, {
+        get: () => {
+          return dereferencedObjectConstructor.at(object[$value] as number)();
+        },
+      });
+    }
+
+    return {
+      at: (address) => rootObject[$cloneAt](address),
+    };
+  }
+
+  /* String utilities */
+  public readString(address: number): string {
+    this.reattachToMemory();
+    let string = '';
+    for (let i = address, char; (char = this.dataview.getUint8(i)); i++) {
+      string += String.fromCharCode(char);
+    }
+    return string;
+  }
+
+  public copyString(address: number, string: string) {
+    this.reattachToMemory();
+    let i;
+    for (i = 0; i < string.length; i++) {
+      this.dataview.setUint8(address + i, string.charCodeAt(i));
+    }
+    this.dataview.setUint8(address + i, 0);
+  }
+
+  public getStringLength(address: number): number {
+    return this.getStringEndAddress(address) - address;
+  }
+
+  private getStringEndAddress(address: number): number {
+    this.reattachToMemory();
+    let endAddress;
+    for (
+      endAddress = address;
+      this.dataview.getUint8(endAddress);
+      endAddress++
+    );
+    return endAddress;
+  }
+
+  /* Type methods */
+  private createTypeMethods<T>(
+    type: TJasmTypeData,
+    setter: (address: number, value: T) => void,
+    getter: (address: number) => T
+  ): IJasmTypeMethods<T> {
+    return {
+      getSingle: (address: number): T => {
+        this.reattachToMemory();
+        return getter(address)
+      },
+      setSingle: (address: number, value: T): void => {
+        this.reattachToMemory();
+        return setter(address, value)
+      },
+      getArray: (address: number, length: number): T[] => {
+        this.reattachToMemory();
+        const values: T[] = [];
+        for (let offset = 0; offset < length; offset++) {
+          values[offset] = getter(address + offset * type.alignment);
         }
-
-        Object.defineProperties(object, {
-            [addressSymbol]: { get: () => basePointer + offset * this[type].alignment },
-            [sizeSymbol]: { get: () => this[type].size },
-            [alignmentSymbol]: { get: () => this[type].alignment }
-        });
-    }
-
-    private instantiateArrayTypeValue(object: any, type: JasmType, basePointer: number, length: number) {
-        Object.defineProperties(object, {
-            [valueSymbol]: {
-                get: () => this[type].getArray(basePointer, length),
-                set: (value: any) => this[type].setArray(basePointer, value)
-            },
-            [addressSymbol]: { get: () => basePointer },
-            [sizeSymbol]: { get: () => this[type].size * length },
-            [alignmentSymbol]: { get: () => this[type].alignment }
-        });
-    }
-
-    /* String utilities */
-    public getAsciiString(pointer: number): string {
-        let str = "";
-        for (let i = pointer, ch; ch = this.dataview.getUint8(i); i++) {
-            str += String.fromCharCode(ch);
+        return values;
+      },
+      setArray: (address: number, values: T[]): void => {
+        this.reattachToMemory();
+        for (let offset = 0; offset < values.length; offset++) {
+          setter(address + offset * type.alignment, values[offset]);
         }
-        return str;
-    }
+      },
+    };
+  }
 
-    public setAsciiString(pointer: number, str: string) {
-        let i;
-        for (i = 0; i < str.length && str[i]; i++) {
-            this.dataview.setUint8(pointer + i, str.charCodeAt(i));
-        }
-        this.dataview.setUint8(pointer + i, 0);
-    }
-
-    public encodeUtf8String(str: string): Uint8Array {
-        return this.textEncoder.encode(str);
-    }
-
-    public getUtf8String(pointer: number): string {
-        let strEnd;
-        for (strEnd = pointer; this.view8u[strEnd]; strEnd++);
-        return this.textDecoder.decode(this.view8u.slice(pointer, strEnd));
-    }
-
-    public setUtf8String(pointer: number, str: string | Uint8Array) {
-        let i;
-        if (typeof str === "string") {
-            str = this.textEncoder.encode(str);
-        }
-        for (i = 0; i < str.length; i++) {
-            this.dataview.setUint8(pointer + i, str[i]);
-        }
-        this.dataview.setUint8(pointer + i, 0);
-    }
-
-    public getStringLength(pointer: number): number {
-        let stringEnd;
-        for (stringEnd = pointer; this.view8u[stringEnd]; stringEnd++);
-        return stringEnd - pointer;
-    }
+  public [JasmType.int8_t] = this.createTypeMethods<number>(
+    jasmTypeData[JasmType.int8_t],
+    (address, value) => this.dataview.setInt8(address, value),
+    (address) => this.dataview.getInt8(address)
+  );
+  public [JasmType.uint8_t] = this.createTypeMethods<number>(
+    jasmTypeData[JasmType.uint8_t],
+    (address, value) => this.dataview.setUint8(address, value),
+    (address) => this.dataview.getUint8(address)
+  );
+  public [JasmType.int16_t] = this.createTypeMethods<number>(
+    jasmTypeData[JasmType.int16_t],
+    (address, value) => this.dataview.setInt16(address, value, true),
+    (address) => this.dataview.getInt16(address, true)
+  );
+  public [JasmType.uint16_t] = this.createTypeMethods<number>(
+    jasmTypeData[JasmType.uint16_t],
+    (address, value) => this.dataview.setUint16(address, value, true),
+    (address) => this.dataview.getUint16(address, true)
+  );
+  public [JasmType.int32_t] = this.createTypeMethods<number>(
+    jasmTypeData[JasmType.int32_t],
+    (address, value) => this.dataview.setInt32(address, value, true),
+    (address) => this.dataview.getInt32(address, true)
+  );
+  public [JasmType.uint32_t] = this.createTypeMethods<number>(
+    jasmTypeData[JasmType.uint32_t],
+    (address, value) => this.dataview.setUint32(address, value, true),
+    (address) => this.dataview.getUint32(address, true)
+  );
+  public [JasmType.int64_t] = this.createTypeMethods<bigint>(
+    jasmTypeData[JasmType.int64_t],
+    (address, value) => this.dataview.setBigInt64(address, value, true),
+    (address) => this.dataview.getBigInt64(address, true)
+  );
+  public [JasmType.uint64_t] = this.createTypeMethods<bigint>(
+    jasmTypeData[JasmType.uint64_t],
+    (address, value) => this.dataview.setBigUint64(address, value, true),
+    (address) => this.dataview.getBigUint64(address, true)
+  );
+  public [JasmType.float] = this.createTypeMethods<number>(
+    jasmTypeData[JasmType.float],
+    (address, value) => this.dataview.setFloat32(address, value, true),
+    (address) => this.dataview.getFloat32(address, true)
+  );
+  public [JasmType.double] = this.createTypeMethods<number>(
+    jasmTypeData[JasmType.double],
+    (address, value) => this.dataview.setFloat64(address, value, true),
+    (address) => this.dataview.getFloat64(address, true)
+  );
+  public [JasmType.bool] = this.createTypeMethods<boolean>(
+    jasmTypeData[JasmType.bool],
+    (address, value) => this.dataview.setUint8(address, value ? 1 : 0),
+    (address) => Boolean(this.dataview.getUint8(address))
+  );
+  public [JasmType.char] = this[JasmType.int8_t];
+  public [JasmType.schar] = this[JasmType.int8_t];
+  public [JasmType.uchar] = this[JasmType.uint8_t];
+  public [JasmType.short] = this[JasmType.int16_t];
+  public [JasmType.ushort] = this[JasmType.uint16_t];
+  public [JasmType.int] = this[JasmType.int32_t];
+  public [JasmType.uint] = this[JasmType.uint32_t];
+  public [JasmType.enum] = this[JasmType.int32_t];
+  public [JasmType.long] = this[JasmType.int32_t];
+  public [JasmType.ulong] = this[JasmType.uint32_t];
+  public [JasmType.llong] = this[JasmType.int64_t];
+  public [JasmType.ullong] = this[JasmType.uint64_t];
+  public [JasmType.pointer] = this[JasmType.uint32_t];
+  public [JasmType.size_t] = this[JasmType.uint32_t];
 }
