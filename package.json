@@ -1,6 +1,6 @@
 {
   "name": "@guillex7/jasm",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "JavaScript tooling for accessing C memory model on WASM",
   "scripts": {
     "build": "tsc",
