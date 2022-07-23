@@ -1,10 +1,10 @@
-export const $value = Symbol('Value for JasmObjects');
-export const $address = Symbol('Address for JasmObjects');
+export const $setValue = Symbol('Set value for JasmObjects');
+export const $getValue = Symbol('Get value for JasmObjects');
+export const $getAddress = Symbol('Address for JasmObjects');
 export const $type = Symbol('Type data for JasmObjects');
-export const $ref = Symbol('Dereference for JasmObjects');
+export const $deref = Symbol('Dereference for JasmObjects');
 export const $baseAddress = Symbol('Base address for JasmBaseObjects');
-export const $offset = Symbol('Offset for JasmBaseObjects')
-export const $cloneAt = Symbol('Clone for JasmBaseObjects')
+export const $offset = Symbol('Offset for JasmBaseObjects');
 
 export enum JasmType {
   /* Fixed integer types */
@@ -88,20 +88,21 @@ export interface IJasmTypesMethods {
 
 export type TJasmObject = {
   [key: string]: TJasmObject;
-  [$value]: any;
-  readonly [$address]: number;
-  readonly [$type]: TJasmTypeData;
-  readonly [$ref]: TJasmBaseObject;
+  [$setValue]: (value: any) => void;
+  [$getValue]: () => any;
+  [$getAddress]: () => number;
+  [$type]: TJasmTypeData;
+  [$deref]: (offset: number) => TJasmBaseObject;
 };
 
 export type TJasmBaseObject = TJasmObject & {
   [$baseAddress]: number;
-  [$offset]: (offset: number) => TJasmBaseObject
-  [$cloneAt]: (address: number) => TJasmObjectProxy
+  [$offset]: (offset: number) => TJasmBaseObject;
 };
 
 export type TJasmObjectConstructor = {
   at: (address: number) => TJasmObjectProxy;
+  type: JasmType | TJasmStruct;
 };
 
 export type TJasmObjectProxy = () => TJasmBaseObject;

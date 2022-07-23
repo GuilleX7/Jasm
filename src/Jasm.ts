@@ -13,14 +13,14 @@ import {
   TJasmObjectDeclaration,
   isJasmObjectConstructor,
   TJasmObjectProxy,
-  $value,
-  $address,
+  $getValue,
+  $getAddress,
   $baseAddress,
   $type,
-  $ref,
+  $deref,
   $offset,
-  $cloneAt,
   IJasmTypeMethods,
+  $setValue,
 } from './types';
 
 export class Jasm implements IJasm {
@@ -35,14 +35,14 @@ export class Jasm implements IJasm {
   private attachToMemory() {
     this.dataview = new DataView(this.memory.buffer);
   }
-  
+
   private isDettachedFromMemory() {
-    return !this.dataview.buffer.byteLength
+    return !this.dataview.buffer.byteLength;
   }
 
   private reattachToMemory() {
     if (this.isDettachedFromMemory()) {
-      this.attachToMemory()
+      this.attachToMemory();
     }
   }
 
@@ -112,11 +112,14 @@ export class Jasm implements IJasm {
 
   /* Objects */
   public create({ type, length = 1, pointsTo = null }: TJasmObjectDeclaration) {
+    const typeData = Jasm.getTypeData(type);
     const baseObject = {
       [$baseAddress]: 0,
       [$offset]: (offset: number) =>
-        this._createProxy(baseObject, baseObject[$baseAddress] + offset)(),
-      [$cloneAt]: (address: number) => this._createProxy(baseObject, address),
+        this._createProxy(
+          baseObject,
+          baseObject[$baseAddress] + offset * typeData.size
+        )(),
     } as TJasmBaseObject;
 
     return this._create(baseObject, { type, length, pointsTo }, baseObject, 0);
@@ -140,67 +143,39 @@ export class Jasm implements IJasm {
   ): TJasmObjectConstructor {
     /* Other symbols */
     const typeData = Jasm.getTypeData(type);
-    Object.defineProperties(object, {
-      [$address]: {
-        get: isJasmBaseObject(object)
-          ? () => object[$baseAddress]
-          : () => rootObject[$address] + rootAddressOffset,
-      },
-      [$type]: {
-        get: () => typeData,
-      },
-    });
+    object[$getAddress] = isJasmBaseObject(object)
+      ? () => object[$baseAddress]
+      : () => rootObject[$getAddress]() + rootAddressOffset;
+    object[$type] = typeData;
 
     /* Define valueSymbol */
     const isArray = length > 1;
     if (isJasmType(type)) {
-      Object.defineProperties(object, {
-        [$value]: {
-          ...(!isArray
-            ? {
-                get: () => this[type].getSingle(object[$address]),
-                set: (value: any) =>
-                  (this[type].setSingle as any)(object[$address], value),
-              }
-            : {
-                get: () => this[type].getArray(object[$address], length),
-                set: (values: any) =>
-                  this[type].setArray(object[$address], values),
-              }),
-        },
-      });
-    } else {
-      Object.defineProperties(object, {
-        ...(!isArray
-          ? {
-              [$value]: {
-                get: () =>
-                  type.members.reduce(
-                    (acc, member) => ({
-                      ...acc,
-                      [member.name]: object[member.name][$value],
-                    }),
-                    {}
-                  ),
-                set: (values: Record<string, any>) =>
-                  Object.entries(values).forEach(
-                    ([key, value]) => (object[key][$value] = value)
-                  ),
-              },
-            }
-          : {
-              [$value]: {
-                get: () =>
-                  [...Array(length).keys()].map((i) => object[i][$value]),
-                set: (values: Record<string, any>[]) =>
-                  [...Array(length).keys()].forEach(
-                    (i) => (object[i][$value] = values[i] as any)
-                  ),
-              },
-            }),
-      });
-
       if (!isArray) {
+        object[$getValue] = () => this[type].getSingle(object[$getAddress]());
+        object[$setValue] = (value: any) =>
+          (this[type].setSingle as any)(object[$getAddress](), value);
+      } else {
+        object[$getValue] = () =>
+          this[type].getArray(object[$getAddress](), length);
+        object[$setValue] = (values: any) =>
+          this[type].setArray(object[$getAddress](), values);
+      }
+    } else {
+      if (!isArray) {
+        object[$getValue] = () =>
+          type.members.reduce(
+            (acc, member) => ({
+              ...acc,
+              [member.name]: object[member.name][$getValue](),
+            }),
+            {}
+          );
+        object[$setValue] = (values: Record<string, any>) =>
+          Object.entries(values).forEach(([key, value]) =>
+            object[key][$setValue](value)
+          );
+
         type.members.forEach((member) => {
           object[member.name] = {} as TJasmObject;
           this._create(
@@ -210,6 +185,13 @@ export class Jasm implements IJasm {
             rootAddressOffset + member.offset
           );
         });
+      } else {
+        object[$getValue] = () =>
+          [...Array(length).keys()].map((i) => object[i][$getValue]());
+        object[$setValue] = (values: Record<string, any>[]) =>
+          [...Array(length).keys()].forEach((i) =>
+            object[i][$setValue](values[i])
+          );
       }
     }
 
@@ -221,7 +203,7 @@ export class Jasm implements IJasm {
           object[i],
           { type, length: 1, pointsTo },
           rootObject,
-          rootAddressOffset + typeData.alignment * i
+          rootAddressOffset + typeData.size * i
         );
       });
     }
@@ -231,15 +213,16 @@ export class Jasm implements IJasm {
       const dereferencedObjectConstructor = isJasmObjectConstructor(pointsTo)
         ? pointsTo
         : this.create(pointsTo);
-      Object.defineProperty(object, $ref, {
-        get: () => {
-          return dereferencedObjectConstructor.at(object[$value] as number)();
-        },
-      });
+      const pointedToTypeData = Jasm.getTypeData(pointsTo.type);
+      object[$deref] = (offset: number) =>
+        dereferencedObjectConstructor.at(
+          object[$getValue]() + offset * pointedToTypeData.size
+        )();
     }
 
     return {
-      at: (address) => rootObject[$cloneAt](address),
+      at: (address: number) => this._createProxy(rootObject, address),
+      type,
     };
   }
 
@@ -286,24 +269,24 @@ export class Jasm implements IJasm {
     return {
       getSingle: (address: number): T => {
         this.reattachToMemory();
-        return getter(address)
+        return getter(address);
       },
       setSingle: (address: number, value: T): void => {
         this.reattachToMemory();
-        return setter(address, value)
+        return setter(address, value);
       },
       getArray: (address: number, length: number): T[] => {
         this.reattachToMemory();
         const values: T[] = [];
         for (let offset = 0; offset < length; offset++) {
-          values[offset] = getter(address + offset * type.alignment);
+          values[offset] = getter(address + offset * type.size);
         }
         return values;
       },
       setArray: (address: number, values: T[]): void => {
         this.reattachToMemory();
         for (let offset = 0; offset < values.length; offset++) {
-          setter(address + offset * type.alignment, values[offset]);
+          setter(address + offset * type.size, values[offset]);
         }
       },
     };
