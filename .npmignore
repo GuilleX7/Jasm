@@ -8,3 +8,4 @@ src
 .prettierrc
 package-lock.json
 tsconfig.json
+webpack.config.js

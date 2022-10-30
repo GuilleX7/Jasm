@@ -8,5 +8,5 @@
     "browser": true,
     "node": true
   },
-  "ignorePatterns": ["lib"]
+  "ignorePatterns": ["lib", "webpack.config.js"]
 }

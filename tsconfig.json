@@ -3,11 +3,12 @@
     "module": "ES6",
     "target": "ESNext",
     "moduleResolution": "node",
-    "allowJs": true,
+    "emitDeclarationOnly": true,
     "declaration": true,
+    "isolatedModules": true,
     "strict": true,
     "esModuleInterop": true,
-    "outDir": "lib",
+    "outDir": "lib"
   },
   "include": ["src"]
 }
