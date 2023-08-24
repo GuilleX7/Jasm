@@ -1,2 +1,2 @@
-export * from './jasm';
+export * from './Jasm';
 export * from './types';
